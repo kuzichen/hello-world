@@ -25,6 +25,7 @@ class ConfigInfo(object):
 
     #省份列表
     def get_dict_provinces(self):
+        '''
         dict_provinces={
         u'北京':1000
         }
@@ -36,7 +37,7 @@ class ConfigInfo(object):
         u'四川':1587,u'陕西':1790,u'河北':1908,u'山西':2092,u'河南':2223,u'吉林':2401,u'黑龙江':2471,u'内蒙古':2614,
         u'山东':2728,u'台湾':4216
         }
-        '''
+        
         return dict_provinces
 
     #区域列表
@@ -105,7 +106,7 @@ class WebDownloadInfo(object):
     #学校列表页面正则
     #获取：学校id，学校名，学校类别
     def list_crawling_pattern(self):
-        pattern = re.compile('<dt><a.*?school/(\d+)/" target.*?<h3><a.*?_blank">(.*?)</a>.*?ipt">(.*?)</span>',re.S)
+        pattern = re.compile('<dt><a.*?school/(\d+)/" target.*?<h3><a.*?_blank">(.*?)</a>.*?<tr.*?<td.*?>(.*?)</td>',re.S)
         return pattern
 
     #学校详情页面正则
@@ -136,9 +137,9 @@ class WebDownloadInfo(object):
 
 
 
-def get_linedata(province,district,school_infos,address):
+def get_linedata(province,district,school_infos,i,address):
 	#'school_id,province,district,school_name,school_type,address'
-	linedata='''%s,"%s","%s","%s","%s","%s"\n''' % (str(school_infos[i][0].encode('gbk')),province,district,str(school_infos[i][2].encode('gbk')),str(school_infos[i][3].encode('gbk')),address)
+	linedata='''%s,"%s","%s","%s","%s","%s"\n''' % (str(school_infos[i][0].encode('gbk')),str(province.encode('gbk')),str(district.encode('gbk')),str(school_infos[i][1].encode('gbk')),str(school_infos[i][2].encode('gbk')),str(address.encode('gbk')))
 	#print linedata
 	return linedata
 
@@ -154,8 +155,8 @@ def main():
 
     file_name=config.get_file_name()   #文件名
     file_titles=config.get_outformat() #表格表头名
-    #f=open(file_name,'w')
-    #f.write(file_titles)
+    f=open(file_name,'w')
+    f.write(file_titles)
 
     dict_provinces=config.get_dict_provinces()             #获取省份子列表字典
 
@@ -172,26 +173,65 @@ def main():
         filter_contents=webdownload.get_re_items(list_base_url,filter_pattern)  #过滤后只剩下包含<a>的所有区域
 
 
-        districts_itemts=re.findall(list_districts_pattern,filter_contents[0])  #获取该省下所有区
+        districts_itemts=re.findall(list_districts_pattern,filter_contents[0])  #获取该省下所有区(0:id,1:name)
 
         print list_base_url,str(prov)
-        #print districts_itemts
-        #按照区，依次筛选爬取
-        for x_index in range(0,len(districts_itemts)):
-            temp_district=districts_itemts[x_index][0]       #该省下的区
-            temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district))
-            #temp_soup=BeautifulSoup(webdownload.get_web_content(temp_url))
+        print 'district number is ',len(districts_itemts)
 
-            temp_totalpage=1  #该区下，总页数（暂未获取）
+
+        #按照区，依次筛选爬取
+        for dis_index in range(0,len(districts_itemts)):
+        #for dis_index in range(0,1):
+            print 'district: ',districts_itemts[dis_index][1]
+            temp_district=districts_itemts[dis_index][0]       #该省下的区id
+            #print dis_index,temp_district
+            temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district))
+            temp_soup=BeautifulSoup(webdownload.get_web_content(temp_url),'lxml')
+
+            #过滤查找翻页区域内容
+            temp_ul=temp_soup.find('nav',{"class":"page_Box tc"})   
+            #倒数第二个<a>对应的为总页数
+            temp_total_page = int(re.findall(re.compile('<a.*?">(.*?)</a>', re.S),str(temp_ul.find_all('a')[-2]))[0])
+
+            #print temp_ul
+            print 'total_page:',temp_total_page
+
+            #temp_totalpage=1  #该区下，总页数（暂未获取）
             #返回列表
             #学校id,学校名,学校类别
             temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
+            #print len(temp_list_items),temp_list_items[0][2]
+            
+            for list_index in range(0,len(temp_list_items)):
+                print 'item: ',list_index
 
+                school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
+                temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
+                temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
+                f.write(temp_linedata)
 
+                time.sleep(5)
+            #(province,district,school_infos,address):
+            
             #
             #写入数据
             #
 
+            if temp_total_page>1:
+                for page_index in range(2,temp_total_page+1):
+                    temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district),page_index)
+                    print temp_url
+                    temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
+                    for list_index in range(0,len(temp_list_items)):
+                        school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
+                        temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
+                        temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
+                        f.write(temp_linedata)
+
+
+                        time.sleep(5)
+
+            
 
             #for page in range(1,temp_totalpage):
             #    temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district),page+1)
@@ -243,7 +283,7 @@ def main():
     #print dict_p_district
     '''
 
-    #f.close()
+    f.close()
 
 if __name__ == "__main__":
     main()
