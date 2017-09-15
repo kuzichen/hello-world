@@ -1,16 +1,14 @@
 #!/usr/bin/python
 #coding:utf-8
 
-import pandas as pd
-import numpy as np
 import urllib,urllib2,requests
 from bs4 import BeautifulSoup
 import datetime,time
 import random
-import json
 import sys
 import re
 import lxml
+
 default_encoding = 'utf-8'
 if sys.getdefaultencoding() != default_encoding:
     reload(sys)
@@ -25,9 +23,12 @@ class ConfigInfo(object):
 
     #省份列表
     def get_dict_provinces(self):
-        '''
+
         dict_provinces={
-        u'北京':1000
+        u'上海':1160,u'天津':1180,u'广东':1019,u'湖南':3206,u'江西':3467,u'贵州':3578,
+        u'云南':3676,u'西藏':3822,u'海南':3903,u'宁夏':4013,u'青海':4040,u'新疆':4092,u'香港':4188,
+        u'澳门':4207,u'福建':3111,u'浙江':3009,u'辽宁':1240,u'江苏':1355,u'湖北':1475,
+        u'四川':1587,u'台湾':4216
         }
         '''
         dict_provinces={
@@ -37,7 +38,8 @@ class ConfigInfo(object):
         u'四川':1587,u'陕西':1790,u'河北':1908,u'山西':2092,u'河南':2223,u'吉林':2401,u'黑龙江':2471,u'内蒙古':2614,
         u'山东':2728,u'台湾':4216
         }
-        
+        '''
+
         return dict_provinces
 
     #区域列表
@@ -77,9 +79,6 @@ class WebDownloadInfo(object):
         self.province=province
         self.districts=districts
 
-    def get_total_pages(self):
-        pass
-
     #获取学校列表页面url地址
     def get_list_url(sefl,temp_province=0,temp_district=None,page=1):
         base_url='http://school.zhongkao.com/province/'
@@ -89,7 +88,7 @@ class WebDownloadInfo(object):
             else:
                 return base_url+str(temp_province)
         elif page > 1:
-            return base_url+str(temp_province)+'/'+str(temp_district)+'/pg'+str(page)
+            return base_url+str(temp_province)+'/'+str(temp_district)+'/p'+str(page)
 
     #获取详细学校信息页面url
     def get_school_url(self,school_id):
@@ -98,8 +97,19 @@ class WebDownloadInfo(object):
 
     #获取web页面内容content
     def get_web_content(self,url,headers=__headers):
+        MAX_NUM=6
         request = urllib2.Request(url,headers = headers)
-        response = urllib2.urlopen(request)
+
+        for i in range(0,MAX_NUM):
+            try:
+                response = urllib2.urlopen(request, timeout=10)
+                break
+            except Exception, e:
+                if i<MAX_NUM-1:
+                    continue
+                else:
+                    print 'URLError: <urlopen error time out> All times is failed '
+
         #获取网页的文本内容content
         return response.read().decode('utf-8')
 
@@ -138,10 +148,10 @@ class WebDownloadInfo(object):
 
 
 def get_linedata(province,district,school_infos,i,address):
-	#'school_id,province,district,school_name,school_type,address'
-	linedata='''%s,"%s","%s","%s","%s","%s"\n''' % (str(school_infos[i][0].encode('gbk')),str(province.encode('gbk')),str(district.encode('gbk')),str(school_infos[i][1].encode('gbk')),str(school_infos[i][2].encode('gbk')),str(address.encode('gbk')))
-	#print linedata
-	return linedata
+    #'school_id,province,district,school_name,school_type,address'
+    linedata='''%s,"%s","%s","%s","%s","%s"\n''' % (str(school_infos[i][0].encode('gbk','ignore')),str(province.encode('gbk','ignore')),str(district.encode('gbk','ignore')),str(school_infos[i][1].encode('gbk','ignore')),str(school_infos[i][2].encode('gbk','ignore')),str(address.encode('gbk','ignore')))
+    #print linedata
+    return linedata
 
 
 
@@ -188,100 +198,62 @@ def main():
             temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district))
             temp_soup=BeautifulSoup(webdownload.get_web_content(temp_url),'lxml')
 
-            #过滤查找翻页区域内容
-            temp_ul=temp_soup.find('nav',{"class":"page_Box tc"})   
-            #倒数第二个<a>对应的为总页数
-            temp_total_page = int(re.findall(re.compile('<a.*?">(.*?)</a>', re.S),str(temp_ul.find_all('a')[-2]))[0])
+            try:
+                #过滤查找翻页区域内容
+                temp_ul=temp_soup.find('nav',{"class":"page_Box tc"})
+                #倒数第二个<a>对应的为总页数
+                temp_total_page = int(re.findall(re.compile('<a.*?">(.*?)</a>', re.S),str(temp_ul.find_all('a')[-2]))[0])
+            except Exception, e:
+                temp_total_page=0
+
 
             #print temp_ul
             print 'total_page:',temp_total_page
 
-            #temp_totalpage=1  #该区下，总页数（暂未获取）
-            #返回列表
-            #学校id,学校名,学校类别
-            temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
-            #print len(temp_list_items),temp_list_items[0][2]
-            
-            for list_index in range(0,len(temp_list_items)):
-                print 'item: ',list_index
+            #总页数大于0时，才继续下一步
+            if temp_total_page:
 
-                school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
-                temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
-                temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
-                f.write(temp_linedata)
+                #temp_totalpage=1  #该区下，总页数（暂未获取）
+                #返回列表
+                #学校id,学校名,学校类别
+                temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
+                #print len(temp_list_items),temp_list_items[0][2]
 
-                time.sleep(5)
-            #(province,district,school_infos,address):
-            
-            #
-            #写入数据
-            #
+                #_________________________________________________________
 
-            if temp_total_page>1:
-                for page_index in range(2,temp_total_page+1):
-                    temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district),page_index)
-                    print temp_url
-                    temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
-                    for list_index in range(0,len(temp_list_items)):
-                        school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
-                        temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
-                        temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
-                        f.write(temp_linedata)
+                temp_school_address='-'
+                for list_index in range(0,len(temp_list_items)):
+                    print 'item: ',list_index
 
+                    #school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
+                    #temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
+                    temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
+                    f.write(temp_linedata)
+                sleeptime=random.randint(2,4)
+                time.sleep(sleeptime)
+                print 'sleeptime:',sleeptime
+                #(province,district,school_infos,address):
+                if temp_total_page>1:
+                    for page_index in range(2,temp_total_page+1):
+                        temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district),page_index)
+                        print temp_url
 
-                        time.sleep(5)
+                        temp_list_items=webdownload.get_re_items(temp_url,list_pattern)
 
-            
-
-            #for page in range(1,temp_totalpage):
-            #    temp_url=webdownload.get_list_url(int(dict_provinces[prov]),int(temp_district),page+1)
-
-            #print temp_url
+                        for list_index in range(0,len(temp_list_items)):
+                            #school_url=webdownload.get_school_url(int(temp_list_items[list_index][0]))
+                            #temp_school_address=webdownload.get_re_items(school_url,school_pattern)[0]
+                            temp_linedata=get_linedata(prov,districts_itemts[dis_index][1],temp_list_items,list_index,temp_school_address)
+                            f.write(temp_linedata)
 
 
+                        sleeptime=random.randint(2,4)
+                        time.sleep(sleeptime)
+                        print 'sleeptime:',sleeptime
 
-    #list_url=webdownload.get_list_url(1000,1006)
-    #list_base_url=webdownload.get_list_url(1000)
-
-
-
-    #list_items=webdownload.get_re_items(list_url,list_pattern)
-
-    #list_items=re.findall(list_districts_pattern,filter_contents[0])
-
-    #print filter_contents[0]
-    #print str(list_items[0][0])
-    #print len(list_items)
-    #print list_items
-    #print list_items[0][2]
-
-    #list_districts=webdownload.get_re_items(list_base_url,list_districts_pattern)
-
-    #print list_districts
+                print 'finish dis_index:',dis_index
 
 
-
-    '''
-    for x in range(0,len(list_items)):
-
-        school_url=webdownload.get_school_url(int(list_items[x][0]))
-        school_items=webdownload.get_re_items(school_url,school_pattern)
-        print school_url
-        print school_items[0]
-        time.sleep(1)
-
-
-    for s in dict_provinces:
-        x=dict_provinces[s]
-        strS=u'一般'
-        for intS in range(0,10):
-            config.set_dict_p_district(x,intS,u'日常')
-        #dict_p_district[x]={'value':intS,'name':strS}
-
-        #print x
-    dict_p_district=config.get_dict_p_district()
-    #print dict_p_district
-    '''
 
     f.close()
 
