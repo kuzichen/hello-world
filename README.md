@@ -4,7 +4,7 @@ It's a good day to die！
 
 
 ### 主要功能：
-· 爬取 http://school.zhongkao.com/provinve/ 网站上所有学校
+· 爬取 http://school.zhongkao.com/province/ 网站上所有学校
 
 ### 记录信息：
 1. school id
